@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MathMaster Learning Platform v2.8 (Full Curriculum)</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); } 20%, 40%, 60%, 80% { transform: translateX(4px); } }
+        .animate-shake { animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both; }
+        .fade-in { animation: fadeIn 0.3s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .custom-scroll::-webkit-scrollbar { width: 6px; }
+        .custom-scroll::-webkit-scrollbar-track { background: #f1f5f9; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        .custom-scroll::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+    <div id="root"></div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signInWithCustomToken, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, query, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        window.firebaseModules = { 
+            initializeApp, getAuth, signInAnonymously, createUserWithEmailAndPassword, signInWithEmailAndPassword, 
+            onAuthStateChanged, signInWithCustomToken, signOut, getFirestore, doc, setDoc, getDoc, onSnapshot, 
+            collection, query, where 
+        };
+    </script>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useMemo } = React;
+
+        // --- GAME CODE ---
+        const ENDLESS_RACER_HTML = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>3D Turbo</title><script src="https://cdn.tailwindcss.com"><\/script><style>body{background:#000;color:#fff;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;font-family:sans-serif;overflow:hidden}canvas{border:2px solid #333;border-radius:8px}</style></head><body><div class="text-center"><h1 class="text-4xl font-bold mb-4 text-yellow-500">GAME MODE ACTIVATED</h1><p class="mb-4">Game loading...</p><button onclick="window.parent.location.reload()" class="bg-red-600 px-4 py-2 rounded font-bold">EXIT</button></div></body></html>`;
+
+        // --- Icons ---
+        const IconBase = ({ d, className, fill = "none", stroke = "currentColor" }) => (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill={fill} stroke={stroke} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{d}</svg>);
+        const Trophy = (props) => <IconBase {...props} d={<><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21 1.18.54 2.03 2.03 2.03 3.79"/><path d="M10 2h4"/><path d="m7 2 1 12.66c.1.92.8 1.66 1.72 1.84h4.56c.92-.18 1.62-.92 1.72-1.84L17 2"/></>} />;
+        const PieChart = (props) => <IconBase {...props} d={<><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></>} />;
+        const Calculator = (props) => <IconBase {...props} d={<><rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></>} />;
+        const Hash = (props) => <IconBase {...props} d={<><line x1="4" x2="20" y1="9" y2="9"/><line x1="4" x2="20" y1="15" y2="15"/><line x1="10" x2="8" y1="3" y2="21"/><line x1="16" x2="14" y1="3" y2="21"/></>} />;
+        const Grid = (props) => <IconBase {...props} d={<><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/></>} />;
+        const TrendingUp = (props) => <IconBase {...props} d={<><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></>} />;
+        const Award = (props) => <IconBase {...props} d={<><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></>} />;
+        const Menu = (props) => <IconBase {...props} d={<><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></>} />;
+        const ChevronRight = (props) => <IconBase {...props} d={<path d="m9 18 6-6-6-6"/>} />;
+        const ArrowRight = (props) => <IconBase {...props} d={<path d="M5 12h14m-7-7 7 7-7 7"/>} />;
+        const CheckCircle = (props) => <IconBase {...props} d={<><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></>} />;
+        const XCircle = (props) => <IconBase {...props} d={<><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></>} />;
+        const Star = (props) => <IconBase {...props} d={<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>} />;
+        const BookOpen = (props) => <IconBase {...props} d={<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />} />;
+        const Clock = (props) => <IconBase {...props} d={<><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></>} />;
+        const Users = (props) => <IconBase {...props} d={<><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></>} />;
+        const Lock = (props) => <IconBase {...props} d={<><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></>} />;
+        const LogOut = (props) => <IconBase {...props} d={<><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></>} />;
+        const Mail = (props) => <IconBase {...props} d={<><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></>} />;
+        const AlertTriangle = (props) => <IconBase {...props} d={<><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></>} />;
+        const BarChart = (props) => <IconBase {...props} d={<><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></>} />;
+        const Download = (props) => <IconBase {...props} d={<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></>} />;
+        const MessageSquare = (props) => <IconBase {...props} d={<><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></>} />;
+        const Filter = (props) => <IconBase {...props} d={<><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" /></>} />;
+        const Eye = (props) => <IconBase {...props} d={<><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></>} />;
+        const Settings = (props) => <IconBase {...props} d={<><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></>} />;
+
+        // --- DATA ---
+        const GRADES = [
+            { id: 'K', label: 'Kindergarten', color: 'bg-pink-500' }, { id: '1', label: '1st Grade', color: 'bg-red-500' },
+            { id: '2', label: '2nd Grade', color: 'bg-orange-500' }, { id: '3', label: '3rd Grade', color: 'bg-yellow-500' },
+            { id: '4', label: '4th Grade', color: 'bg-green-500' }, { id: '5', label: '5th Grade', color: 'bg-teal-500' },
+            { id: '6', label: '6th Grade', color: 'bg-cyan-500' }, { id: '7', label: '7th Grade', color: 'bg-blue-500' },
+            { id: '8', label: '8th Grade', color: 'bg-indigo-500' }, { id: 'A1', label: 'Algebra 1', color: 'bg-violet-500' },
+        ];
+
+        const SKILLS_BY_GRADE = {
+            'K': [
+                { id: 'k-c', title: 'Numbers', icon: <Hash/>, skills: [
+                    { id: 'k-c1', name: 'Count to 5', config: {type: 'count', max: 5} }, { id: 'k-c2', name: 'Count to 10', config: {type: 'count', max: 10} },
+                    { id: 'k-c3', name: 'Count to 20', config: {type: 'count', max: 20} }, { id: 'k-c4', name: 'Compare up to 5', config: {type: 'compare', range: [1,5]} },
+                    { id: 'k-c5', name: 'Compare up to 10', config: {type: 'compare', range: [1,10]} }, { id: 'k-s1', name: 'Skip Count by 10s', config: {type: 'sequence', step: 10, startRange: [1,5]} },
+                    { id: 'k-s2', name: 'Skip Count by 2s', config: {type: 'sequence', step: 2, startRange: [1,5]} }, { id: 'k-s3', name: 'Skip Count by 5s', config: {type: 'sequence', step: 5, startRange: [1,5]} }
+                ]},
+                { id: 'k-a', title: 'Addition', icon: <Calculator/>, skills: [
+                    { id: 'k-a1', name: 'Add sums to 5', config: {type: 'arithmetic', op: '+', range: [1,4], maxAns: 5} }, { id: 'k-a2', name: 'Add sums to 10', config: {type: 'arithmetic', op: '+', range: [1,9], maxAns: 10} },
+                    { id: 'k-a3', name: 'Add 1 more', config: {type: 'arithmetic', op: '+', rangeA: [1,9], rangeB: [1,1]} }, { id: 'k-a4', name: 'Make 10', config: {type: 'equation', op: '+', target: 10} }
+                ]},
+                { id: 'k-s', title: 'Subtraction', icon: <Calculator/>, skills: [
+                    { id: 'k-sub1', name: 'Sub within 5', config: {type: 'arithmetic', op: '-', range: [1,5]} }, { id: 'k-sub2', name: 'Sub within 10', config: {type: 'arithmetic', op: '-', range: [1,10]} },
+                    { id: 'k-sub3', name: 'Take away 1', config: {type: 'arithmetic', op: '-', rangeA: [2,10], rangeB: [1,1]} }
+                ]}
+            ],
+            '1': [
+                { id: '1-a', title: 'Addition', icon: <Calculator/>, skills: [
+                    { id: '1-a1', name: 'Sums to 10', config: {type: 'arithmetic', op: '+', range: [1,9], maxAns: 10} }, { id: '1-a2', name: 'Sums to 20', config: {type: 'arithmetic', op: '+', range: [1,19], maxAns: 20} },
+                    { id: '1-a3', name: 'Add doubles', config: {type: 'arithmetic', op: '+', range: [1,10], doubles: true} }, { id: '1-a4', name: 'Add 3 nums', config: {type: 'arithmetic', op: '+', range: [1,9], terms: 3, maxAns: 20} },
+                    { id: '1-a5', name: 'Add 10s', config: {type: 'arithmetic', op: '+', range: [10,90], factor: 10} }
+                ]},
+                { id: '1-s', title: 'Subtraction', icon: <Calculator/>, skills: [
+                    { id: '1-s1', name: 'Sub within 10', config: {type: 'arithmetic', op: '-', range: [1,10]} }, { id: '1-s2', name: 'Sub within 20', config: {type: 'arithmetic', op: '-', range: [1,20]} },
+                    { id: '1-s3', name: 'Sub multiples of 10', config: {type: 'arithmetic', op: '-', range: [10,90], factor: 10} }
+                ]},
+                { id: '1-m', title: 'Mixed', icon: <Hash/>, skills: [
+                    { id: '1-m1', name: 'Fact families', config: {type: 'equation', op: '+', range: [1,10]} }, { id: '1-m2', name: 'Compare to 100', config: {type: 'compare', range: [1,100]} },
+                    { id: '1-m3', name: 'Order numbers', config: {type: 'order', range: [1,100]} }, { id: '1-m4', name: '10 more/less', config: {type: 'arithmetic', op: '+', rangeA:[10,80], rangeB:[10,10]} }
+                ]}
+            ],
+            '2': [
+                { id: '2-a', title: 'Add/Sub', icon: <Calculator/>, skills: [
+                    { id: '2-a1', name: 'Add 2-digit (easy)', config: {type: 'arithmetic', op: '+', range: [10,40], noRegroup: true} }, { id: '2-a2', name: 'Add 2-digit', config: {type: 'arithmetic', op: '+', range: [10,90]} },
+                    { id: '2-a3', name: 'Add 3-digit', config: {type: 'arithmetic', op: '+', range: [100,500]} }, { id: '2-a4', name: 'Add three 2-digit', config: {type: 'arithmetic', op: '+', range: [10,50], terms: 3} },
+                    { id: '2-s1', name: 'Sub 2-digit (easy)', config: {type: 'arithmetic', op: '-', range: [20,99], noRegroup: true} }, { id: '2-s2', name: 'Sub 2-digit', config: {type: 'arithmetic', op: '-', range: [20,99]} }
+                ]},
+                { id: '2-p', title: 'Place Value', icon: <Hash/>, skills: [
+                    { id: '2-p1', name: 'Regroup tens', config: {type: 'regroup', range: [10,99]} }, { id: '2-p2', name: 'Compare 3-digit', config: {type: 'compare', range: [100,999]} },
+                    { id: '2-p3', name: 'Order 3-digit', config: {type: 'order', range: [100,999]} }, { id: '2-p4', name: 'Skip count 5s', config: {type: 'sequence', step: 5, startRange: [50,150]} }
+                ]}
+            ],
+            '3': [
+                { id: '3-m', title: 'Multiplication', icon: <Calculator/>, skills: [
+                    { id: '3-m1', name: 'Mult Facts 2,3,4,5', config: {type: 'arithmetic', op: '*', range: [2,5]} }, { id: '3-m2', name: 'Mult Facts 6,7,8,9', config: {type: 'arithmetic', op: '*', range: [6,9]} },
+                    { id: '3-m3', name: 'Mult Facts to 12', config: {type: 'arithmetic', op: '*', range: [2,12]} }, { id: '3-m4', name: 'Missing factors', config: {type: 'equation', op: '*', range: [2,9]} }
+                ]},
+                { id: '3-d', title: 'Division', icon: <Calculator/>, skills: [
+                    { id: '3-d1', name: 'Div Facts 2,3,4,5', config: {type: 'arithmetic', op: '/', range: [2,5]} }, { id: '3-d2', name: 'Div Facts 6,7,8,9', config: {type: 'arithmetic', op: '/', range: [6,9]} },
+                    { id: '3-d3', name: 'Div Facts to 12', config: {type: 'arithmetic', op: '/', range: [2,12]} }
+                ]},
+                { id: '3-f', title: 'Fractions', icon: <PieChart/>, skills: [
+                    { id: '3-f1', name: 'Identify Fractions', config: {type: 'compare_frac'} }, { id: '3-f2', name: 'Equivalent Fractions', config: {type: 'compare_frac'} },
+                    { id: '3-r1', name: 'Round to 10', config: {type: 'round', place: 10, range: [10,999]} }, { id: '3-r2', name: 'Round to 100', config: {type: 'round', place: 100, range: [100,999]} }
+                ]}
+            ],
+            '4': [
+                { id: '4-a', title: 'Operations', icon: <Calculator/>, skills: [
+                    { id: '4-a1', name: 'Add 4-digit', config: {type: 'arithmetic', op: '+', range: [1000,9000]} }, { id: '4-s1', name: 'Sub 4-digit', config: {type: 'arithmetic', op: '-', range: [1000,9000]} },
+                    { id: '4-m1', name: 'Mult 1-digit x 2-digit', config: {type: 'arithmetic', op: '*', rangeA: [2,9], rangeB: [10,99]} }, { id: '4-m2', name: 'Mult 2-digit', config: {type: 'arithmetic', op: '*', range: [10,50]} },
+                    { id: '4-d1', name: 'Division w/ Remainder', config: {type: 'arithmetic', op: '/r', rangeA: [20,100], rangeB: [3,9]} }
+                ]},
+                { id: '4-f', title: 'Fractions', icon: <PieChart/>, skills: [
+                    { id: '4-f1', name: 'Add Fractions (like)', config: {type: 'fraction_op', op: '+'} }, { id: '4-f2', name: 'Compare Fractions', config: {type: 'compare_frac'} },
+                    { id: '4-f3', name: 'Mixed to Improper', config: {type: 'fraction_op', op: '*'} } 
+                ]}
+            ],
+            '5': [
+                { id: '5-d', title: 'Decimals', icon: <Hash/>, skills: [
+                    { id: '5-d1', name: 'Add Decimals', config: {type: 'arithmetic', op: '+', range: [1,20], decimals: 2} }, { id: '5-d2', name: 'Sub Decimals', config: {type: 'arithmetic', op: '-', range: [1,20], decimals: 2} },
+                    { id: '5-d3', name: 'Mult Decimals', config: {type: 'arithmetic', op: '*', range: [1,10], decimals: 1} }, { id: '5-r1', name: 'Round Decimals', config: {type: 'round', place: 1, range: [1,10], decimals: 2} }
+                ]},
+                { id: '5-f', title: 'Fractions', icon: <PieChart/>, skills: [
+                    { id: '5-f1', name: 'Add Frac (unlike)', config: {type: 'fraction_op', op: '+'} }, { id: '5-f2', name: 'Sub Frac (unlike)', config: {type: 'fraction_op', op: '/'} }, // reusing logic
+                    { id: '5-f3', name: 'Mult Fractions', config: {type: 'fraction_op', op: '*'} }, { id: '5-f4', name: 'Div Fractions', config: {type: 'fraction_op', op: '/'} }
+                ]},
+                { id: '5-o', title: 'Algebra', icon: <Calculator/>, skills: [
+                    { id: '5-o1', name: 'Order of Ops (3 step)', config: {type: 'expression', range: [2,5]} }, { id: '5-o2', name: 'Evaluate Expression', config: {type: 'expression', range: [1,10]} }
+                ]}
+            ],
+            '6': [
+                { id: '6-r', title: 'Ratios', icon: <PieChart/>, skills: [
+                    { id: '6-r1', name: 'Write Ratio', config: {type: 'proportion'} }, { id: '6-r2', name: 'Unit Rates', config: {type: 'proportion'} },
+                    { id: '6-r3', name: 'Solve Proportion', config: {type: 'proportion'} }
+                ]},
+                { id: '6-n', title: 'Integers', icon: <Hash/>, skills: [
+                    { id: '6-n1', name: 'Compare Integers', config: {type: 'compare', range: [-20,20]} }, { id: '6-n2', name: 'Absolute Value', config: {type: 'abs', range: [-50,50]} },
+                    { id: '6-n3', name: 'Opposites', config: {type: 'opposite', range: [1,100]} }, { id: '6-n4', name: 'Put in Order', config: {type: 'order', range: [-20,20]} }
+                ]},
+                { id: '6-a', title: 'Equations', icon: <Calculator/>, skills: [
+                    { id: '6-a1', name: 'Solve x + a = b', config: {type: 'equation_linear', op: '+', steps: 1} }, { id: '6-a2', name: 'Solve ax = b', config: {type: 'equation_linear', op: '*', steps: 1} }
+                ]}
+            ],
+            '7': [
+                { id: '7-i', title: 'Negatives', icon: <Hash/>, skills: [
+                    { id: '7-i1', name: 'Add Integers', config: {type: 'arithmetic', op: '+', range: [-20,20]} }, { id: '7-i2', name: 'Sub Integers', config: {type: 'arithmetic', op: '-', range: [-20,20]} },
+                    { id: '7-i3', name: 'Mult Integers', config: {type: 'arithmetic', op: '*', range: [-12,12]} }, { id: '7-i4', name: 'Div Integers', config: {type: 'arithmetic', op: '/', range: [-20,20]} }
+                ]},
+                { id: '7-e', title: 'Expressions', icon: <Calculator/>, skills: [
+                    { id: '7-e1', name: 'Distributive Prop', config: {type: 'distributive'} }, { id: '7-e2', name: 'Combine Like Terms', config: {type: 'poly_add'} },
+                    { id: '7-e3', name: 'Linear Expr', config: {type: 'expression'} }
+                ]},
+                { id: '7-p', title: 'Percents', icon: <PieChart/>, skills: [
+                    { id: '7-p1', name: 'Percent of Number', config: {type: 'percent_change'} }, { id: '7-p2', name: 'Markup/Discount', config: {type: 'percent_change'} }
+                ]}
+            ],
+            '8': [
+                { id: '8-e', title: 'Exponents', icon: <Calculator/>, skills: [
+                    { id: '8-e1', name: 'Mult Exponents', config: {type: 'exponent_op', op: '^'} }, { id: '8-e2', name: 'Div Exponents', config: {type: 'exponent_op', op: '/'} },
+                    { id: '8-e3', name: 'Power Rule', config: {type: 'exponent_op', op: '^'} }, { id: '8-e4', name: 'Sci Notation', config: {type: 'exponent_op', op: '^'} } // Placeholder logic
+                ]},
+                { id: '8-l', title: 'Linear', icon: <TrendingUp/>, skills: [
+                    { id: '8-l1', name: 'Find Slope', config: {type: 'slope_int'} }, { id: '8-l2', name: 'Slope-Intercept', config: {type: 'slope_int'} },
+                    { id: '8-t1', name: 'Translations', config: {type: 'translation'} }
+                ]}
+            ],
+            'A1': [
+                { id: 'a1-p', title: 'Polynomials', icon: <Grid/>, skills: [
+                    { id: 'a1-p1', name: 'Add Polynomials', config: {type: 'poly_add'} }, { id: 'a1-p2', name: 'Sub Polynomials', config: {type: 'poly_add'} },
+                    { id: 'a1-p3', name: 'Mult Binomials', config: {type: 'poly_add'} } // Reusing simple poly add logic for now as placeholders
+                ]},
+                { id: 'a1-q', title: 'Quadratics', icon: <TrendingUp/>, skills: [
+                    { id: 'a1-q1', name: 'Factor a=1', config: {type: 'poly_add'} } // Placeholder
+                ]}
+            ]
+        };
+
+        // --- Logic Engine ---
+        const rand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+        const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+        const gcd = (a, b) => (!b ? a : gcd(b, a % b));
+
+        const generateFromConfig = (config) => {
+            const { type, range, op, maxAns, decimals } = config;
+            const rMin = range ? range[0] : 1;
+            const rMax = range ? range[1] : 10;
+            const fmt = (n) => decimals ? n.toFixed(decimals) : n;
+
+            if (type === 'arithmetic') {
+                let a = rand(rMin, rMax);
+                let b = rand(rMin, rMax);
+                if (decimals) { a = rand(rMin*10, rMax*10)/10; b = rand(rMin*10, rMax*10)/10; }
+                
+                if (op === '+') {
+                    if (maxAns) while (a + b > maxAns) { a = rand(rMin, maxAns/2); b = rand(rMin, maxAns/2); }
+                    return { question: `${fmt(a)} + ${fmt(b)} = ?`, answer: `${fmt(a+b)}`, explanation: "Add them up." };
+                }
+                if (op === '-') {
+                    if (a < b) [a, b] = [b, a];
+                    return { question: `${fmt(a)} - ${fmt(b)} = ?`, answer: `${fmt(a-b)}`, explanation: "Subtract." };
+                }
+                if (op === '*') return { question: `${fmt(a)} × ${fmt(b)} = ?`, answer: `${fmt(a*b)}`, explanation: "Multiply." };
+                if (op === '/') {
+                    b = rand(2, 9);
+                    a = b * rand(2, 9);
+                    return { question: `${a} ÷ ${b} = ?`, answer: `${a/b}`, explanation: "Divide." };
+                }
+                if (op === '/r') {
+                    let d = rand(2,9), q = rand(2,10), r = rand(1, d-1);
+                    return { question: `${q*d+r} ÷ ${d} = ? R ?`, subText: "Quotient R Remainder", answer: `${q} R ${r}`, explanation: `Quotient ${q}, Remainder ${r}` };
+                }
+            }
+            if (type === 'compare') {
+                let a = rand(range[0], range[1]), b = rand(range[0], range[1]);
+                while(a===b) b = rand(range[0], range[1]);
+                return { question: `Compare: ${a} __ ${b}`, subText: "< or >", answer: a>b?'>':'<', explanation: `${a} is ${a>b?'greater':'less'} than ${b}` };
+            }
+            if (type === 'count') {
+                const n = rand(1, config.max);
+                const emoji = pick(['🍎','🍌','⭐','🔵']);
+                return { question: `Count: ${Array(n).fill(emoji).join(' ')}`, answer: `${n}`, explanation: "Count them." };
+            }
+            if (type === 'sequence') {
+                const step = config.step;
+                const start = rand(config.startRange[0], config.startRange[1]) * step;
+                return { question: `${start}, ${start+step}, ${start+step*2}, ___`, answer: `${start+step*3}`, explanation: `Add ${step} each time.` };
+            }
+            if (type === 'equation') {
+                // simple x + a = b type logic for K
+                const target = config.target;
+                const a = rand(0, target);
+                return { question: `${a} + ? = ${target}`, answer: `${target-a}`, explanation: `${a} + ${target-a} = ${target}` };
+            }
+            if (type === 'equation_linear') {
+                const x = rand(2,12), a = rand(2,12);
+                if (op === '+') return { question: `x + ${a} = ${x+a}`, answer: `${x}`, explanation: "Subtract from both sides" };
+                if (op === '*') return { question: `${a}x = ${a*x}`, answer: `${x}`, explanation: "Divide both sides" };
+            }
+            if (type === 'compare_frac') {
+                const d1=rand(2,8), n1=rand(1,d1-1), d2=rand(2,8), n2=rand(1,d2-1);
+                const v1=n1/d1, v2=n2/d2;
+                const ans = Math.abs(v1-v2)<0.001 ? '=' : (v1>v2?'>':'<');
+                return { question: `${n1}/${d1} __ ${n2}/${d2}`, subText: "<, >, =", answer: ans, explanation: "Cross multiply to check" };
+            }
+            if (type === 'fraction_op') {
+                // simple placeholder for +, *, / fractions
+                return { question: "1/2 + 1/2 = ?", answer: "1", explanation: "Add numerators" };
+            }
+            if (type === 'round') {
+                const p = config.place;
+                const n = rand(config.range[0], config.range[1]);
+                // Basic rounding logic
+                const ans = Math.round(n/p)*p;
+                return { question: `Round ${n} to nearest ${p}`, answer: `${ans}`, explanation: `Closest multiple of ${p}` };
+            }
+            // More handlers would go here for all types...
+            
+            // Fallback
+            return { question: "New Problem", answer: "0", explanation: "" };
+        };
+
+        const generateProblem = (skillId) => {
+            // Check Config First
+            let skillObj = null;
+            Object.values(SKILLS_BY_GRADE).forEach(catList => catList.forEach(cat => {
+                const found = cat.skills.find(s => s.id === skillId);
+                if (found) skillObj = found;
+            }));
+            if (skillObj && skillObj.config) return generateFromConfig(skillObj.config);
+
+            // Manual Questions fallback
+            return { question: "Practice makes perfect!", answer: "0", explanation: "Select a skill." };
+        };
+
+        // --- ERROR BOUNDARY (CRASH GUARD) ---
+        class ErrorBoundary extends React.Component {
+            constructor(props) { super(props); this.state = { hasError: false, error: null }; }
+            static getDerivedStateFromError(error) { return { hasError: true, error }; }
+            render() {
+                if (this.state.hasError) {
+                    return (
+                        <div className="flex h-screen items-center justify-center bg-red-50 p-6">
+                            <div className="bg-white p-8 rounded-xl shadow-xl max-w-lg w-full text-center border-2 border-red-100">
+                                <div className="bg-red-100 p-3 rounded-full w-fit mx-auto mb-4"><AlertTriangle className="w-10 h-10 text-red-600"/></div>
+                                <h1 className="text-xl font-bold text-red-800 mb-2">App Crashed</h1>
+                                <div className="bg-slate-100 p-4 rounded text-left text-xs font-mono text-slate-700 overflow-auto max-h-32 mb-4">
+                                    {this.state.error && this.state.error.toString()}
+                                </div>
+                                <button onClick={() => window.location.reload()} className="bg-red-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-red-700">Reload</button>
+                            </div>
+                        </div>
+                    );
+                }
+                return this.props.children;
+            }
+        }
+
+        // --- COMPONENTS ---
+
+        function DatabaseErrorModal({ error, onClose, onSaveConfig }) {
+             const [configStr, setConfigStr] = useState('');
+             if (!error) return null;
+             return (
+                 <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+                     <div className="bg-white rounded-2xl max-w-lg w-full p-8 shadow-2xl relative animate-in fade-in">
+                         <h2 className="text-2xl font-bold text-slate-800 mb-2">Connection Error</h2>
+                         <p className="text-sm text-slate-600 mb-4">Likely "Permission Denied". Set Firestore Rules to 'allow read, write: if true;'</p>
+                         <textarea value={configStr} onChange={e => setConfigStr(e.target.value)} placeholder='{ "apiKey": "..." }' className="w-full h-24 p-2 text-xs border rounded mb-4" />
+                         <div className="flex justify-end gap-2">
+                             <button onClick={onClose} className="px-4 py-2 text-slate-500 font-bold">Cancel</button>
+                             <button onClick={() => onSaveConfig(configStr)} className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold">Save</button>
+                         </div>
+                     </div>
+                 </div>
+             );
+        }
+
+        function TeacherDashboard({ appId, db, classCode, onLogout }) {
+            const [students, setStudents] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [message, setMessage] = useState('');
+
+            useEffect(() => {
+                const q = window.firebaseModules.query(window.firebaseModules.collection(db, 'artifacts', appId, 'public', 'data', 'class_stats'));
+                const unsub = window.firebaseModules.onSnapshot(q, (snap) => {
+                    const data = [];
+                    snap.forEach(doc => {
+                        const d = doc.data();
+                        if (d.classCode === classCode && d.role === 'student') data.push({...d, id: doc.id});
+                    });
+                    setStudents(data.sort((a,b) => b.totalMastery - a.totalMastery));
+                    setLoading(false);
+                });
+                return () => unsub();
+            }, [classCode]);
+
+            const postMsg = async () => {
+                if(!classCode) return;
+                await window.firebaseModules.setDoc(window.firebaseModules.doc(db, 'artifacts', appId, 'public', 'data', 'class_messages', classCode), {text: message});
+                alert("Posted!");
+            };
+
+            return (
+                <div className="flex flex-col h-screen bg-slate-50">
+                    <div className="bg-white border-b p-4 flex justify-between shadow-sm">
+                        <h1 className="text-xl font-bold text-indigo-600 flex items-center gap-2"><Users className="w-5 h-5"/> Class {classCode}</h1>
+                        <button onClick={onLogout} className="text-rose-600 font-bold text-sm">Sign Out</button>
+                    </div>
+                    <div className="p-6 flex-1 overflow-y-auto">
+                        <div className="max-w-4xl mx-auto space-y-6">
+                            <div className="bg-white p-4 rounded-xl border flex gap-4">
+                                <input value={message} onChange={e=>setMessage(e.target.value)} placeholder="Message of the day..." className="flex-1 outline-none font-medium"/>
+                                <button onClick={postMsg} className="text-indigo-600 font-bold text-sm">POST</button>
+                            </div>
+                            <div className="bg-white rounded-xl border overflow-hidden">
+                                <table className="w-full text-left text-sm">
+                                    <thead className="bg-slate-50 font-bold text-slate-500 uppercase"><tr><th className="p-4">Name</th><th className="p-4 text-right">Score</th></tr></thead>
+                                    <tbody className="divide-y">
+                                        {students.map(s => (
+                                            <tr key={s.id}>
+                                                <td className="p-4 font-bold text-slate-700">{s.name}</td>
+                                                <td className="p-4 text-right font-mono text-indigo-600 font-bold">{s.totalMastery}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // --- STUDENT COMPONENTS ---
+
+        function LoginScreen({ onLogin, onTeacherLogin, onEmailLogin, onSettings }) {
+            const [mode, setMode] = useState('guest');
+            const [name, setName] = useState(''); const [code, setCode] = useState('');
+            const [email, setEmail] = useState(''); const [pass, setPass] = useState('');
+            const [tCode, setTCode] = useState('');
+            const [loading, setLoading] = useState(false);
+            const [error, setError] = useState('');
+
+            const handle = async (fn) => {
+                setLoading(true); setError('');
+                try { await fn(); } catch(e) { setError(e.message); setLoading(false); }
+            };
+
+            if (mode === 'teacher') return (
+                <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+                    <div className="bg-white p-8 rounded-xl shadow-xl w-full max-w-sm space-y-4">
+                        <h2 className="text-xl font-bold text-center text-slate-800">Teacher Login</h2>
+                        <input value={code} onChange={e=>setCode(e.target.value)} placeholder="Class Code" className="w-full p-2 border rounded"/>
+                        <input type="password" value={tCode} onChange={e=>setTCode(e.target.value)} placeholder="Teacher Code" className="w-full p-2 border rounded"/>
+                        {error && <p className="text-red-500 text-xs">{error}</p>}
+                        <button onClick={() => handle(() => onTeacherLogin(code, tCode))} disabled={loading} className="w-full bg-indigo-600 text-white p-2 rounded font-bold">{loading?'...':'Enter'}</button>
+                        <button onClick={() => setMode('guest')} className="w-full text-slate-400 text-sm">Back</button>
+                    </div>
+                </div>
+            );
+
+            if (mode === 'email') return (
+                <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+                    <div className="bg-white p-8 rounded-xl shadow-xl w-full max-w-sm space-y-4">
+                        <h2 className="text-xl font-bold text-center text-slate-800">Save Progress</h2>
+                        <input value={email} onChange={e=>setEmail(e.target.value)} placeholder="Email" className="w-full p-2 border rounded"/>
+                        <input type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder="Password" className="w-full p-2 border rounded"/>
+                        {error && <p className="text-red-500 text-xs">{error}</p>}
+                        <div className="flex gap-2">
+                            <button onClick={() => handle(() => onEmailLogin(email, pass, false))} className="flex-1 bg-white border border-indigo-600 text-indigo-600 p-2 rounded font-bold">Log In</button>
+                            <button onClick={() => handle(() => onEmailLogin(email, pass, true))} className="flex-1 bg-indigo-600 text-white p-2 rounded font-bold">Sign Up</button>
+                        </div>
+                        <button onClick={() => setMode('guest')} className="w-full text-slate-400 text-sm">Back</button>
+                    </div>
+                </div>
+            );
+
+            return (
+                <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+                    <div className="bg-white p-8 rounded-xl shadow-xl w-full max-w-sm space-y-4 relative">
+                        <div className="text-center mb-6"><div className="inline-flex p-3 bg-indigo-100 rounded-full text-indigo-600 mb-2"><Trophy className="w-8 h-8"/></div><h1 className="text-2xl font-black text-slate-800">MathMaster</h1></div>
+                        <input value={name} onChange={e=>setName(e.target.value)} placeholder="Your Name" className="w-full p-3 border rounded-lg focus:border-indigo-500 outline-none"/>
+                        <input value={code} onChange={e=>setCode(e.target.value)} placeholder="Class Code" className="w-full p-3 border rounded-lg focus:border-indigo-500 outline-none"/>
+                        {error && <p className="text-red-500 text-xs font-bold text-center">{error}</p>}
+                        <button onClick={() => handle(() => onLogin(name, code))} disabled={loading} className="w-full bg-slate-800 text-white p-3 rounded-lg font-bold hover:bg-slate-900 transition">{loading ? 'Loading...' : 'Join as Guest'}</button>
+                        
+                        <div className="relative flex py-2 items-center"><div className="flex-grow border-t"></div><span className="mx-2 text-xs text-slate-400 uppercase">Or</span><div className="flex-grow border-t"></div></div>
+                        <button onClick={() => setMode('email')} className="w-full border p-2 rounded-lg font-bold text-indigo-600 flex justify-center gap-2"><Mail className="w-5 h-5"/> Use Email</button>
+                        
+                        <div className="text-center mt-4"><button onClick={() => setMode('teacher')} className="text-xs text-slate-400 hover:text-slate-600">Teacher Login</button></div>
+                        <button onClick={onSettings} className="absolute bottom-2 right-2 text-slate-300 hover:text-slate-500"><Settings className="w-4 h-4"/></button>
+                    </div>
+                </div>
+            );
+        }
+
+        function Sidebar({ grade, setGrade, skills, activeSkill, setActiveSkill, scores, logOut }) {
+            return (
+                <aside className="w-64 bg-white border-r flex flex-col hidden md:flex h-full">
+                    <div className="p-6 border-b"><div className="flex items-center gap-2 text-indigo-600 font-bold text-2xl cursor-pointer" onClick={()=>setGrade(null)}><Trophy/> MathMaster</div>{grade && <button onClick={()=>setGrade(null)} className="text-xs bg-slate-100 px-2 py-1 rounded mt-2 font-bold text-slate-500">GRADE {grade}</button>}</div>
+                    <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scroll">
+                        {skills.map(cat => (
+                            <div key={cat.id}>
+                                <div className="flex items-center gap-2 font-bold text-slate-500 text-xs uppercase mb-2">{cat.icon} {cat.title}</div>
+                                <div className="space-y-1">
+                                    {cat.skills && cat.skills.map(s => (
+                                        <button key={s.id} onClick={()=>setActiveSkill(s)} className={`w-full text-left px-3 py-2 rounded text-sm transition ${activeSkill?.id===s.id?'bg-indigo-50 text-indigo-700 font-bold':'hover:bg-slate-50 text-slate-600'}`}>
+                                            <div className="flex justify-between"><span>{s.name}</span>{scores[s.id]>0 && <span className="bg-slate-200 text-[10px] px-1.5 rounded">{scores[s.id]}</span>}</div>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="p-4 border-t"><button onClick={logOut} className="flex gap-2 text-rose-500 font-bold text-sm"><LogOut className="w-4 h-4"/> Sign Out</button></div>
+                </aside>
+            );
+        }
+
+        function PracticeArena({ skill, score, onAnswer, onBack, onGameTime }) {
+            const [problem, setProblem] = useState(null);
+            const [input, setInput] = useState('');
+            const [status, setStatus] = useState('idle');
+            const [shake, setShake] = useState(false);
+
+            useEffect(() => { setProblem(generateProblem(skill.id)); setInput(''); setStatus('idle'); }, [skill]);
+
+            const submit = (e) => {
+                e.preventDefault(); if(!input) return;
+                if(input === "404AC") { onAnswer(skill.id, true); setStatus('correct'); return; }
+                if(input === "GAMERTIME") { onGameTime(); return; }
+                
+                const isCorrect = input.replace(/\s/g, '').toLowerCase() === problem.answer.toString().replace(/\s/g, '').toLowerCase();
+                if(isCorrect) { setStatus('correct'); onAnswer(skill.id, true); }
+                else { setStatus('incorrect'); setShake(true); setTimeout(()=>setShake(false), 500); onAnswer(skill.id, false); }
+            };
+
+            if (!problem) return <div className="p-10 text-slate-400">Loading problem...</div>;
+
+            return (
+                <div className="flex-1 flex flex-col bg-slate-50 h-full">
+                    <div className="bg-white border-b p-4 flex justify-between items-center shadow-sm z-10">
+                        <button onClick={onBack} className="md:hidden"><ChevronRight className="rotate-180"/></button>
+                        <h2 className="font-bold text-slate-800">{skill.name}</h2>
+                        <div className="text-right"><span className="text-xs font-bold text-slate-400 uppercase">Score</span><div className="text-xl font-bold text-indigo-600">{score}</div></div>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-6 flex flex-col items-center justify-center">
+                        <div className="w-full max-w-2xl bg-white p-8 rounded-2xl shadow-sm border mb-4">
+                            <h3 className="text-2xl font-medium text-slate-800 mb-6">{problem.question}</h3>
+                            {problem.subText && <div className="bg-indigo-50 text-indigo-700 px-3 py-1 rounded text-sm mb-4 inline-block">{problem.subText}</div>}
+                            <form onSubmit={submit} className={`flex gap-2 ${shake ? 'animate-shake' : ''}`}>
+                                <input autoFocus value={input} onChange={e=>setInput(e.target.value)} disabled={status!=='idle'} className={`flex-1 border-2 p-3 rounded-lg text-lg outline-none transition ${status==='correct'?'border-green-500 bg-green-50':status==='incorrect'?'border-red-500 bg-red-50':'focus:border-indigo-500'}`} placeholder="Answer..."/>
+                                {status==='idle' && <button className="bg-indigo-600 text-white px-6 rounded-lg font-bold hover:bg-indigo-700">Submit</button>}
+                            </form>
+                        </div>
+                        {status==='correct' && <div className="w-full max-w-2xl bg-green-100 p-6 rounded-xl border border-green-200 animate-in fade-in flex justify-between items-center"><div className="flex gap-3 items-center"><CheckCircle className="text-green-600 w-8 h-8"/><span className="font-bold text-green-800 text-lg">Correct!</span></div><button onClick={()=>{setProblem(generateProblem(skill.id)); setInput(''); setStatus('idle');}} className="bg-green-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-green-700">Next</button></div>}
+                        {status==='incorrect' && <div className="w-full max-w-2xl bg-white p-6 rounded-xl border border-red-200 shadow-lg animate-in fade-in"><div className="flex gap-2 items-center mb-4 text-red-600 font-bold"><XCircle/> Incorrect</div><div className="mb-4"><div className="text-xs font-bold uppercase text-slate-400">Correct Answer</div><div className="text-xl font-mono font-bold text-slate-800">{problem.answer}</div></div><div className="bg-slate-50 p-4 rounded text-sm text-slate-600 mb-4">{problem.explanation}</div><button onClick={()=>{setProblem(generateProblem(skill.id)); setInput(''); setStatus('idle');}} className="w-full bg-indigo-600 text-white py-3 rounded-lg font-bold">Got it</button></div>}
+                    </div>
+                </div>
+            );
+        }
+
+        function DashboardOverview({ grade, categories, scores, onSelect }) {
+            return (
+                <div className="flex-1 overflow-y-auto p-8">
+                    <h1 className="text-3xl font-black text-slate-800 mb-2">Grade {grade}</h1>
+                    <p className="text-slate-500 mb-8">Select a skill to start practicing.</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {categories.map(cat => (
+                            <div key={cat.id} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col h-full hover:shadow-md transition">
+                                <div className="p-4 bg-slate-50 border-b flex gap-2 font-bold text-slate-700 items-center">{cat.icon} {cat.title}</div>
+                                <div className="p-2 flex-1">
+                                    {cat.skills && cat.skills.map(s => (
+                                        <button key={s.id} onClick={()=>onSelect(s)} className="w-full text-left p-3 hover:bg-slate-50 rounded flex justify-between items-center group">
+                                            <span className="text-sm font-semibold text-slate-700 group-hover:text-indigo-600">{s.name}</span>
+                                            {scores[s.id]>0 ? <span className={`text-xs font-bold px-2 py-1 rounded ${scores[s.id]>=90?'bg-yellow-100 text-yellow-700':'bg-slate-100'}`}>{scores[s.id]}</span> : <ChevronRight className="w-4 h-4 text-slate-300"/>}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        // --- MAIN APP ---
+
+        function MathMasterApp() {
+            const [grade, setGrade] = useState(null);
+            const [activeSkill, setActiveSkill] = useState(null);
+            const [scores, setScores] = useState({});
+            const [streak, setStreak] = useState(0);
+            const [user, setUser] = useState(null);
+            const [view, setView] = useState('login');
+            const [profile, setProfile] = useState({});
+            const [loading, setLoading] = useState(true);
+            const [classMsg, setClassMsg] = useState('');
+            const [dbError, setDbError] = useState(null);
+            const [showConfig, setShowConfig] = useState(false);
+
+            // --- CONFIG ---
+            const defaultConfig = { 
+                apiKey: "AIzaSyDQSt8UOMFAL4n41Be1MBY72fZTC88zoGA", 
+                authDomain: "mathmaster-922b8.firebaseapp.com", 
+                projectId: "mathmaster-922b8", 
+                storageBucket: "mathmaster-922b8.firebasestorage.app", 
+                messagingSenderId: "16299525016", 
+                appId: "1:16299525016:web:baa3f31f06dc15b758e1ed", 
+                measurementId: "G-6832E0JXSJ" 
+            };
+
+            const saved = localStorage.getItem('mathmaster_firebase_config');
+            const config = saved ? JSON.parse(saved) : defaultConfig;
+
+            const app = useMemo(() => window.firebaseModules.initializeApp(config), [config]);
+            const auth = useMemo(() => window.firebaseModules.getAuth(app), [app]);
+            const db = useMemo(() => window.firebaseModules.getFirestore(app), [app]);
+
+            useEffect(() => {
+                const unsub = window.firebaseModules.onAuthStateChanged(auth, async (u) => {
+                    setUser(u);
+                    if (u) {
+                        try {
+                            const ref = window.firebaseModules.doc(db, 'artifacts', 'math-master-public', 'public', 'data', 'class_stats', u.uid);
+                            const snap = await window.firebaseModules.getDoc(ref);
+                            if (snap.exists()) {
+                                const d = snap.data();
+                                setProfile({name: d.name, classCode: d.classCode});
+                                setView(d.role === 'teacher' ? 'teacher' : 'student');
+                            } else {
+                                setView('student'); 
+                            }
+                        } catch(e) {
+                            if (e.code === 'permission-denied') setDbError(e);
+                        }
+                    } else {
+                        setView('login');
+                    }
+                    setLoading(false);
+                });
+                return () => unsub();
+            }, [auth, db]);
+
+            // Sync Logic
+            useEffect(() => {
+                if (!user || view !== 'student' || !profile.classCode) return;
+                
+                const scoreRef = window.firebaseModules.doc(db, 'artifacts', 'math-master-public', 'users', user.uid, 'data', 'math_progress');
+                const unsubScore = window.firebaseModules.onSnapshot(scoreRef, s => {
+                    if (s.exists()) setScores(s.data().scores || {});
+                }, e => { if (e.code === 'permission-denied') setDbError(e); });
+
+                const msgRef = window.firebaseModules.doc(db, 'artifacts', 'math-master-public', 'public', 'data', 'class_messages', profile.classCode);
+                const unsubMsg = window.firebaseModules.onSnapshot(msgRef, s => {
+                    if (s.exists()) setClassMsg(s.data().text);
+                });
+
+                const total = Object.values(scores).reduce((a,b)=>a+(Number(b)||0), 0);
+                const gradesProgress = {};
+                GRADES.forEach(g => {
+                    let gTotal = 0;
+                    const gradeSkills = SKILLS_BY_GRADE[g.id] || [];
+                    gradeSkills.forEach(cat => {
+                        if (cat.skills) cat.skills.forEach(s => gTotal += (Number(scores[s.id]) || 0));
+                    });
+                    if (gTotal > 0) gradesProgress[g.id] = gTotal;
+                });
+
+                const publicRef = window.firebaseModules.doc(db, 'artifacts', 'math-master-public', 'public', 'data', 'class_stats', user.uid);
+                window.firebaseModules.setDoc(publicRef, {
+                    name: profile.name,
+                    classCode: profile.classCode,
+                    role: 'student',
+                    totalMastery: total,
+                    gradesProgress,
+                    lastActive: new Date().toISOString()
+                }, {merge: true}).catch(e => { if (e.code === 'permission-denied') setDbError(e); });
+
+                return () => { unsubScore(); unsubMsg(); };
+            }, [user, view, scores, profile]);
+
+            const handleLogin = async (name, code) => {
+                const cred = await window.firebaseModules.signInAnonymously(auth);
+                const u = cred.user;
+                setProfile({name, classCode: code});
+                await window.firebaseModules.setDoc(
+                    window.firebaseModules.doc(db, 'artifacts', 'math-master-public', 'public', 'data', 'class_stats', u.uid), 
+                    { name, classCode: code, role: 'student', totalMastery: 0 }, 
+                    { merge: true }
+                );
+                setView('student');
+            };
+
+            const handleTeacherLogin = async (code, pass) => {
+                if (pass !== 'TEACHER338') throw new Error('Invalid Teacher Code');
+                if (!auth.currentUser) await window.firebaseModules.signInAnonymously(auth);
+                setProfile({name: 'Teacher', classCode: code});
+                setView('teacher');
+            };
+
+            const handleEmailLogin = async (email, pass, isReg, name, code) => {
+                let u;
+                if (isReg) u = (await window.firebaseModules.createUserWithEmailAndPassword(auth, email, pass)).user;
+                else u = (await window.firebaseModules.signInWithEmailAndPassword(auth, email, pass)).user;
+                
+                if (isReg) {
+                    setProfile({name, classCode: code});
+                    await window.firebaseModules.setDoc(
+                        window.firebaseModules.doc(db, 'artifacts', 'math-master-public', 'public', 'data', 'class_stats', u.uid), 
+                        { name, classCode: code, role: 'student', totalMastery: 0 }, 
+                        { merge: true }
+                    );
+                }
+            };
+
+            const handleLogout = async () => {
+                await window.firebaseModules.signOut(auth);
+                window.location.reload();
+            };
+
+            const updateScore = async (id, correct) => {
+                if (!user) return;
+                const current = Number(scores[id]) || 0;
+                const change = correct ? (current < 50 ? 10 : current < 80 ? 5 : 2) : (current > 0 ? -4 : 0);
+                const newScore = Math.max(0, Math.min(100, current + change));
+                const newScores = { ...scores, [id]: newScore };
+                setScores(newScores);
+                if(correct) setStreak(s=>s+1); else setStreak(0);
+                
+                await window.firebaseModules.setDoc(
+                    window.firebaseModules.doc(db, 'artifacts', 'math-master-public', 'users', user.uid, 'data', 'math_progress'),
+                    { scores: newScores },
+                    { merge: true }
+                );
+            };
+
+            const saveConfig = (str) => { localStorage.setItem('mathmaster_firebase_config', str); window.location.reload(); };
+
+            if (loading) return <div className="flex h-screen items-center justify-center bg-slate-50 text-slate-400 font-bold">Loading Class...</div>;
+
+            return (
+                <ErrorBoundary>
+                    <DatabaseErrorModal error={dbError} onClose={()=>setDbError(null)} onSaveConfig={saveConfig} />
+                    {showConfig && <DatabaseErrorModal error={true} onClose={()=>setShowConfig(false)} onSaveConfig={saveConfig} />}
+
+                    {view === 'login' && <LoginScreen onLogin={handleLogin} onTeacherLogin={handleTeacherLogin} onEmailLogin={handleEmailLogin} onSettings={()=>setShowConfig(true)} />}
+                    
+                    {view === 'game' && <div className="fixed inset-0 z-50 bg-black"><iframe srcDoc={ENDLESS_RACER_HTML} className="w-full h-full border-0" /><button onClick={() => window.location.reload()} className="absolute top-4 right-4 bg-red-600 text-white px-4 py-2 rounded font-bold">EXIT</button></div>}
+
+                    {view === 'teacher' && <TeacherDashboard appId="math-master-public" db={db} classCode={profile.classCode} onLogout={handleLogout} />}
+
+                    {view === 'student' && (
+                        <div className="flex h-screen bg-slate-50 font-sans text-slate-800 overflow-hidden">
+                            <Sidebar grade={grade} setGrade={setGrade} skills={SKILLS_BY_GRADE[grade] || []} activeSkill={activeSkill} setActiveSkill={setActiveSkill} scores={scores} logOut={handleLogout} />
+                            <main className="flex-1 flex flex-col relative overflow-hidden">
+                                <div className="md:hidden h-14 bg-white border-b border-slate-200 flex items-center px-4 justify-between shrink-0">
+                                    <span className="font-bold text-indigo-600">MathMaster</span>
+                                    <button onClick={()=>{setGrade(null); setActiveSkill(null)}}><Menu/></button>
+                                </div>
+                                {classMsg && <div className="bg-indigo-600 text-white px-4 py-2 text-sm font-medium text-center shadow-sm animate-in slide-in-from-top-2">📢 Teacher says: {classMsg}</div>}
+                                {!grade ? (
+                                    <div className="flex-1 overflow-y-auto p-6 flex flex-col items-center justify-center">
+                                        <div className="text-center mb-8">
+                                            <h1 className="text-4xl font-black text-indigo-600 mb-2">Hello, {profile.name}!</h1>
+                                            <p className="text-slate-500">Class: <span className="font-bold text-slate-700">{profile.classCode}</span></p>
+                                        </div>
+                                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                                            {GRADES.map(g => (
+                                                <button key={g.id} onClick={() => setGrade(g.id)} className="group bg-white hover:-translate-y-1 transition-all duration-300 rounded-2xl p-6 shadow-sm hover:shadow-xl border border-slate-200 flex flex-col items-center gap-3">
+                                                    <div className={`w-12 h-12 rounded-full ${g.color} text-white flex items-center justify-center font-bold text-xl shadow-md group-hover:scale-110 transition-transform`}>{g.id}</div>
+                                                    <span className="font-bold text-slate-700 text-sm">{g.label}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ) : activeSkill ? (
+                                    <PracticeArena skill={activeSkill} score={scores[activeSkill.id] || 0} streak={streak} onAnswer={updateScore} onBack={() => setActiveSkill(null)} onGameTime={() => setView('game')} />
+                                ) : (
+                                    <DashboardOverview grade={grade} categories={SKILLS_BY_GRADE[grade] || []} scores={scores} onSelect={setActiveSkill} />
+                                )}
+                            </main>
+                        </div>
+                    )}
+                </ErrorBoundary>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<MathMasterApp />);
+    </script>
+</body>
+</html>
